@@ -27,17 +27,19 @@ public class FlutterWebviewPlugin implements MethodCallHandler, PluginRegistry.A
     private Context context;
     static MethodChannel channel;
     private static final String CHANNEL_NAME = "flutter_webview_plugin";
+    private PluginRegistry.Registrar registrar;
 
     public static void registerWith(PluginRegistry.Registrar registrar) {
         channel = new MethodChannel(registrar.messenger(), CHANNEL_NAME);
-        final FlutterWebviewPlugin instance = new FlutterWebviewPlugin(registrar.activity(),registrar.activeContext());
+        final FlutterWebviewPlugin instance = new FlutterWebviewPlugin(registrar.activity(), registrar.activeContext(), registrar);
         registrar.addActivityResultListener(instance);
         channel.setMethodCallHandler(instance);
     }
 
-    private FlutterWebviewPlugin(Activity activity, Context context) {
+    private FlutterWebviewPlugin(Activity activity, Context context, PluginRegistry.Registrar registrar) {
         this.activity = activity;
         this.context = context;
+        this.registrar = registrar;
     }
 
     @Override
@@ -105,7 +107,7 @@ public class FlutterWebviewPlugin implements MethodCallHandler, PluginRegistry.A
         boolean debuggingEnabled = call.argument("debuggingEnabled");
 
         if (webViewManager == null || webViewManager.closed == true) {
-            webViewManager = new WebviewManager(activity, context);
+            webViewManager = new WebviewManager(activity, context, registrar);
         }
 
         FrameLayout.LayoutParams params = buildLayoutParams(call);

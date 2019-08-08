@@ -32,6 +32,7 @@ import java.text.SimpleDateFormat;
 
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
+import io.flutter.plugin.common.PluginRegistry;
 
 import static android.app.Activity.RESULT_OK;
 
@@ -120,8 +121,8 @@ class WebviewManager {
     ResultHandler resultHandler;
     Context context;
 
-    WebviewManager(final Activity activity, final Context context) {
-        this.webView = new ObservableWebView(activity);
+    WebviewManager(final Activity activity, final Context context, PluginRegistry.Registrar registrar) {
+        this.webView = new ObservableWebView(activity,registrar);
         this.activity = activity;
         this.context = context;
         this.resultHandler = new ResultHandler();
