@@ -6,9 +6,12 @@ import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.webkit.DownloadListener;
@@ -26,6 +29,7 @@ import io.flutter.plugin.common.PluginRegistry;
 import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
 
 public class ObservableWebView extends WebView {
+
     private OnScrollChangedCallback mOnScrollChangedCallback;
     private Context context;
     private Activity activity;
@@ -55,10 +59,21 @@ public class ObservableWebView extends WebView {
         this.registrar = registrar;
     }
 
+
     protected void init(final Context context) {
 
 
-        Log.d("MESSAGE", "webView-init成功");
+//        new AlertDialog.Builder(context)
+//                .setTitle("test")
+//                .setMessage("cmcc")
+//                .create().show();
+
+//        progressDialog = new ProgressDialog(context);
+//        progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+//        progressDialog.setTitle("下载文件");
+//        progressDialog.setMessage("当前下载进度");
+//        progressDialog.setCancelable(false);
+
         setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(final String url, String userAgent, final String contentDisposition, final String mimetype, long contentLength) {
@@ -115,20 +130,43 @@ public class ObservableWebView extends WebView {
 //    }
 
     //安装应用
-    private void installApk(File file) {
+    private void installApk(Uri u) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                // intent.setDataAndType(Uri.fromFile(file), "application/vnd.android.package-archive");
+                intent.setDataAndType(u, "application/vnd.android.package-archive");
+            } else {
+                //  Uri uri = FileProvider.getUriForFile(context, context.getApplicationContext().getPackageName() + ".provider", file);
+                intent.setDataAndType(u, "application/vnd.android.package-archive");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            }
+            activity.startActivity(intent);
+        } catch (Exception e) {
+            //fileName
+            Log.i("fileName", fileName);
+            File file = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS + "/" + fileName);
+            if (file != null) {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            intent.setDataAndType(Uri.fromFile(file), "application/vnd.android.package-archive");
-        } else {
-            Uri uri = FileProvider.getUriForFile(context, context.getApplicationContext().getPackageName() + ".provider", file);
-            intent.setDataAndType(uri, "application/vnd.android.package-archive");
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    Uri uri = FileProvider.getUriForFile(activity, context.getPackageName() + ".provider", file);
+                    intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } else {
+                    intent.setDataAndType(Uri.parse("file://" + file.toString()),
+                            "application/vnd.android.package-archive");
+                }
+                if (activity.getPackageManager().queryIntentActivities(intent, 0).size() > 0) {
+                    activity.startActivity(intent);
+                }
+            }
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        activity.startActivity(intent);
     }
+
+    //private ProgressDialog progressDialog;
 
 //    private void startInstallPermissionSettingActivity() {
 //        Uri packageURI = Uri.parse("package:" + context.getPackageName());
@@ -137,9 +175,69 @@ public class ObservableWebView extends WebView {
 //        activity.startActivityForResult(intent, 10086);
 //    }
 
+    private final Handler mHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            if (msg.what == 1001) {
+//                progressDialog.setMax(100);
+//                progressDialog.setProgress(
+//                        new Double(((double) msg.arg1) / (double) msg.arg2 * 100).intValue()
+//                );
+
+//                pb.setMax(msg.arg2);
+//                pb.setProgress(msg.arg1);
+                if (msg.arg1 == msg.arg2) {
+                    Log.i("a", "下载完成");
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+
+                    }
+                    removeCallbacks(mQuery);
+                    installApk(dm.getUriForDownloadedFile(mDownLoadId));
+//                    if (dialog.isShowing()) {
+//                        dialog.dismiss();
+//                    }
+                }
+            }
+        }
+    };
+    private DownloadManager dm;
+    private long mDownLoadId;
+
+    private void queytState() {
+        Cursor c = dm.query(new DownloadManager.Query().setFilterById(mDownLoadId));
+        if (c != null) {
+            if (c.moveToFirst()) {
+                int d_so_far = c.getInt(c.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                int d_so_all = c.getInt(c.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+
+                Message msg = Message.obtain();
+                if (d_so_all > 0) {
+                    msg.what = 1001;
+                    msg.arg1 = d_so_far;
+                    msg.arg2 = d_so_all;
+                    mHandler.sendMessage(msg);
+                }
+
+                if (!c.isClosed()) {
+                    c.close();
+                }
+
+            }
+        }
+
+    }
+
+
+    String fileName = "";
 
     @SuppressLint("NewApi")
-    public static boolean handleDownload(final Context context, final String fromUrl, final String toFilename) {
+    public boolean handleDownload(final Context context, final String fromUrl,
+                                  final String toFilename) {
+        fileName = toFilename;
+
         if (Build.VERSION.SDK_INT < 9) {
             throw new RuntimeException("Method requires API level 9 or above");
         }
@@ -151,19 +249,26 @@ public class ObservableWebView extends WebView {
         }
         request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, toFilename);
 
-        final DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+
+        dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
         try {
             try {
-                dm.enqueue(request);
+                mDownLoadId = dm.enqueue(request);
+
             } catch (SecurityException e) {
                 if (Build.VERSION.SDK_INT >= 11) {
                     request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE);
                 }
                 dm.enqueue(request);
             }
+            if (mDownLoadId != 0) {
+                mHandler.post(mQuery);
+                // dialog.show();
+            }
 
             return true;
         }
+
         // if the download manager app has been disabled on the device
         catch (IllegalArgumentException e) {
             // show the settings screen where the user can enable the download manager app again
@@ -173,8 +278,18 @@ public class ObservableWebView extends WebView {
         }
     }
 
+    private final QueryRunnable mQuery = new QueryRunnable();
+
+    private class QueryRunnable implements Runnable {
+        @Override
+        public void run() {
+            queytState();
+            mHandler.postDelayed(mQuery, 100);
+        }
+    }
+
     @SuppressLint("NewApi")
-    private static boolean openAppSettings(final Context context, final String packageName) {
+    private boolean openAppSettings(final Context context, final String packageName) {
         if (Build.VERSION.SDK_INT < 9) {
             throw new RuntimeException("Method requires API level 9 or above");
         }
@@ -195,14 +310,16 @@ public class ObservableWebView extends WebView {
     @Override
     protected void onScrollChanged(final int l, final int t, final int oldl, final int oldt) {
         super.onScrollChanged(l, t, oldl, oldt);
-        if (mOnScrollChangedCallback != null) mOnScrollChangedCallback.onScroll(l, t, oldl, oldt);
+        if (mOnScrollChangedCallback != null)
+            mOnScrollChangedCallback.onScroll(l, t, oldl, oldt);
     }
 
     public OnScrollChangedCallback getOnScrollChangedCallback() {
         return mOnScrollChangedCallback;
     }
 
-    public void setOnScrollChangedCallback(final OnScrollChangedCallback onScrollChangedCallback) {
+    public void setOnScrollChangedCallback(
+            final OnScrollChangedCallback onScrollChangedCallback) {
         mOnScrollChangedCallback = onScrollChangedCallback;
     }
 
